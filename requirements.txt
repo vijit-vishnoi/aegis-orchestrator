@@ -1,0 +1,9 @@
+langgraph>=0.2.0
+langgraph-checkpoint-sqlite
+langchain-core
+langchain-ollama
+fastmcp
+slack_bolt
+qdrant-client
+pydantic
+python-dotenv
