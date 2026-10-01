@@ -1,5 +1,8 @@
 langgraph>=0.2.0
 langgraph-checkpoint-sqlite
+langgraph-checkpoint-postgres
+psycopg_pool
+psycopg[binary]
 langchain-core
 langchain-ollama
 fastmcp
@@ -7,3 +10,8 @@ slack_bolt
 qdrant-client
 pydantic
 python-dotenv
+fastapi
+uvicorn
+prometheus-client
+aiohttp
+websockets

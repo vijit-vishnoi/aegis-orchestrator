@@ -1,17 +1,21 @@
 import sqlite3
+import os
 from typing import Literal, TypedDict, Annotated
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import add_messages
 from langgraph.types import interrupt, Command
 from langgraph.checkpoint.sqlite import SqliteSaver
 from langchain_core.messages import HumanMessage
+from langchain_core.runnables import RunnableConfig
+from slack_sdk import WebClient
 
 class AgentState(TypedDict):
     messages: Annotated[list, add_messages]
     next_node: str | None
     remediation_status: str | None
+    approval_dispatched: bool | None
 
-def supervisor_node(state: AgentState) -> Command[Literal["metric_explorer", "log_analyzer", "remediation", "__end__"]]:
+def supervisor_node(state: AgentState) -> Command[Literal["metric_explorer", "log_analyzer", "dispatch_approval", "__end__"]]:
     print("--- SUPERVISOR NODE ---")
     
     if state.get("remediation_status"):
@@ -30,7 +34,7 @@ def supervisor_node(state: AgentState) -> Command[Literal["metric_explorer", "lo
     elif "log" in last_msg:
         goto = "log_analyzer"
     elif "remediate" in last_msg or "fix" in last_msg or "restart" in last_msg:
-        goto = "remediation"
+        goto = "dispatch_approval"
     else:
         goto = "__end__"
         
@@ -40,8 +44,55 @@ def supervisor_node(state: AgentState) -> Command[Literal["metric_explorer", "lo
         goto=goto
     )
 
-def remediation_node(state: AgentState) -> Command[Literal["supervisor"]]:
-    print("--- REMEDIATION NODE ---")
+def dispatch_approval(state: AgentState, config: RunnableConfig) -> Command[Literal["execute_remediation"]]:
+    print("--- DISPATCH APPROVAL NODE ---")
+    proposed_action = "Restart pod 'api-server' in namespace 'prod'"
+    
+                                                                  
+    slack_token = os.environ.get("SLACK_BOT_TOKEN")
+    slack_channel = os.environ.get("SLACK_CHANNEL_ID", "#general")
+    thread_id = config.get("configurable", {}).get("thread_id", "unknown-thread")
+    
+    if slack_token:
+        try:
+            client = WebClient(token=slack_token)
+            blocks = [
+                {
+                    "type": "section",
+                    "text": {"type": "mrkdwn", "text": f"*Aegis Orchestrator Alert ({thread_id})*\nDo you approve the following action:\n_{proposed_action}_"}
+                },
+                {
+                    "type": "actions",
+                    "elements": [
+                        {
+                            "type": "button",
+                            "text": {"type": "plain_text", "text": "Approve"},
+                            "style": "primary",
+                            "action_id": "approve_remediation",
+                            "value": thread_id
+                        },
+                        {
+                            "type": "button",
+                            "text": {"type": "plain_text", "text": "Reject"},
+                            "style": "danger",
+                            "action_id": "reject_remediation",
+                            "value": thread_id
+                        }
+                    ]
+                }
+            ]
+            client.chat_postMessage(channel=slack_channel, text="Remediation Approval Required", blocks=blocks)
+            print(f"Dispatched Slack approval message to {slack_channel}")
+        except Exception as e:
+            print(f"Failed to send Slack message: {e}")
+            
+    return Command(
+        update={"approval_dispatched": True},
+        goto="execute_remediation"
+    )
+
+def execute_remediation(state: AgentState, config: RunnableConfig) -> Command[Literal["supervisor"]]:
+    print("--- EXECUTE REMEDIATION NODE ---")
     proposed_action = "Restart pod 'api-server' in namespace 'prod'"
     
     print(f"Pausing execution for approval of: {proposed_action}")
@@ -75,11 +126,12 @@ def remediation_node(state: AgentState) -> Command[Literal["supervisor"]]:
 def build_graph() -> StateGraph:
     from worker_nodes import metric_explorer_node, log_analyzer_node
     
-    builder = StateGraph(AgentState)  # type: ignore
+    builder = StateGraph(AgentState)                
     builder.add_node("supervisor", supervisor_node)
     builder.add_node("metric_explorer", metric_explorer_node)
     builder.add_node("log_analyzer", log_analyzer_node)
-    builder.add_node("remediation", remediation_node)
+    builder.add_node("dispatch_approval", dispatch_approval)
+    builder.add_node("execute_remediation", execute_remediation)
     builder.add_edge(START, "supervisor")
     
     return builder

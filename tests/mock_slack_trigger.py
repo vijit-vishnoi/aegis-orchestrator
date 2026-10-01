@@ -12,7 +12,8 @@ async def run_mock_approval():
     print("=== MOCK SLACK APPROVAL TRIGGER ===")
     
     builder = build_graph()
-    thread_config = {"configurable": {"thread_id": "test-e2e-incident-001"}}
+    thread_id = sys.argv[1] if len(sys.argv) > 1 else "test-e2e-incident-001"
+    thread_config = {"configurable": {"thread_id": thread_id}}
     
     db_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "checkpoints.db"))
 
@@ -22,7 +23,7 @@ async def run_mock_approval():
         state = await graph.aget_state(thread_config)
         
         if not state.next:
-            print("\n[ERROR] Graph is not in a paused state or the thread 'test-e2e-incident-001' does not exist.")
+            print(f"\n[ERROR] Graph is not in a paused state or the thread '{thread_id}' does not exist.")
             print("Please make sure `python tests/test_e2e_workflow.py` has been executed and is paused.")
             return
 

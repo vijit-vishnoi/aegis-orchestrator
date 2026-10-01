@@ -30,7 +30,7 @@ def search_postmortems(query: str, limit: int = 1) -> list[str]:
     setup_collection()
     query_vector = embeddings.embed_query(query)
     
-    hits = client.search(  # type: ignore
+    hits = client.search(                
         collection_name="incident_postmortems",
         query_vector=query_vector,
         limit=limit
