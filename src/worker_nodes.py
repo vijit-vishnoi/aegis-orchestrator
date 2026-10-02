@@ -27,7 +27,7 @@ async def call_mcp_tool(tool_name: str, arguments: dict, timeout_seconds: int = 
                 print(f"[DEBUG] Calling tool '{tool_name}'...")
                 result = await session.call_tool(tool_name, arguments)
                 print(f"[DEBUG] MCP Tool call completed.")
-                return result.content[0].text                
+                return result.content[0].text  # type: ignore
 
     try:
         return await asyncio.wait_for(_call(), timeout=timeout_seconds)
@@ -39,7 +39,7 @@ async def call_mcp_tool(tool_name: str, arguments: dict, timeout_seconds: int = 
         return f"Error: {str(e)}"
 
 async def metric_explorer_node(state) -> Command[Literal["supervisor"]]:
-    result = await call_mcp_tool("get_cpu_metrics", {"pod_name": "api-server", "duration_mins": 15})
+    result = await call_mcp_tool("get_cpu_metrics", {"pod_name": "target_app", "duration_mins": 1})
                                                                                      
     return Command(
         update={"messages": [HumanMessage(content=f"CPU Analysis: {result}. Recommend fix.")]},

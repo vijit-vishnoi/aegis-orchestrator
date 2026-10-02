@@ -14,6 +14,7 @@ class AgentState(TypedDict):
     next_node: str | None
     remediation_status: str | None
     approval_dispatched: bool | None
+    metric_explorer_ran: bool | None
 
 def supervisor_node(state: AgentState) -> Command[Literal["metric_explorer", "log_analyzer", "dispatch_approval", "__end__"]]:
     print("--- SUPERVISOR NODE ---")
@@ -30,7 +31,10 @@ def supervisor_node(state: AgentState) -> Command[Literal["metric_explorer", "lo
     last_msg = content.lower() if isinstance(content, str) else str(content).lower()
     
     if "metric" in last_msg:
-        goto = "metric_explorer"
+        if state.get("metric_explorer_ran"):
+            goto = "dispatch_approval"
+        else:
+            goto = "metric_explorer"
     elif "log" in last_msg:
         goto = "log_analyzer"
     elif "remediate" in last_msg or "fix" in last_msg or "restart" in last_msg:
@@ -39,14 +43,18 @@ def supervisor_node(state: AgentState) -> Command[Literal["metric_explorer", "lo
         goto = "__end__"
         
     print(f"Routing to: {goto}")
+    update_dict: dict = {"next_node": goto}
+    if goto == "metric_explorer":
+        update_dict["metric_explorer_ran"] = True
+        
     return Command(
-        update={"next_node": goto},
+        update=update_dict,
         goto=goto
     )
 
 def dispatch_approval(state: AgentState, config: RunnableConfig) -> Command[Literal["execute_remediation"]]:
     print("--- DISPATCH APPROVAL NODE ---")
-    proposed_action = "Restart pod 'api-server' in namespace 'prod'"
+    proposed_action = "Restart container 'target_app'"
     
                                                                   
     slack_token = os.environ.get("SLACK_BOT_TOKEN")
@@ -93,7 +101,7 @@ def dispatch_approval(state: AgentState, config: RunnableConfig) -> Command[Lite
 
 def execute_remediation(state: AgentState, config: RunnableConfig) -> Command[Literal["supervisor"]]:
     print("--- EXECUTE REMEDIATION NODE ---")
-    proposed_action = "Restart pod 'api-server' in namespace 'prod'"
+    proposed_action = "Restart container 'target_app'"
     
     print(f"Pausing execution for approval of: {proposed_action}")
     
@@ -109,7 +117,7 @@ def execute_remediation(state: AgentState, config: RunnableConfig) -> Command[Li
         print("Approval received. Executing remediation...")
         import asyncio
         from worker_nodes import call_mcp_tool
-        result = asyncio.run(call_mcp_tool("execute_pod_restart", {"pod_name": "api-server", "namespace": "prod"}))
+        result = asyncio.run(call_mcp_tool("execute_container_restart", {"container_name": "target_app"}))
         status = f"Remediation executed successfully. MCP output: {result}"
     else:
         print("Remediation rejected.")
@@ -126,7 +134,7 @@ def execute_remediation(state: AgentState, config: RunnableConfig) -> Command[Li
 def build_graph() -> StateGraph:
     from worker_nodes import metric_explorer_node, log_analyzer_node
     
-    builder = StateGraph(AgentState)                
+    builder = StateGraph(AgentState)  # type: ignore
     builder.add_node("supervisor", supervisor_node)
     builder.add_node("metric_explorer", metric_explorer_node)
     builder.add_node("log_analyzer", log_analyzer_node)

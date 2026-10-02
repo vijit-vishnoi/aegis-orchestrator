@@ -2,7 +2,7 @@ from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, VectorParams, PointStruct
 from langchain_ollama import OllamaEmbeddings
 
-client = QdrantClient(path="qdrant_storage")
+client = QdrantClient(url="http://localhost:6333")
 embeddings = OllamaEmbeddings(model="nomic-embed-text")
 
 def setup_collection():
@@ -30,7 +30,7 @@ def search_postmortems(query: str, limit: int = 1) -> list[str]:
     setup_collection()
     query_vector = embeddings.embed_query(query)
     
-    hits = client.search(                
+    hits = client.search(  # type: ignore
         collection_name="incident_postmortems",
         query_vector=query_vector,
         limit=limit

@@ -1,0 +1,9 @@
+groups:
+  - name: aegis_alerts
+    rules:
+      - alert: HighCPUUsage
+        expr: rate(process_cpu_seconds_total[1m]) > 0.1
+        labels:
+          severity: critical
+        annotations:
+          summary: "High CPU usage detected on target_app"
