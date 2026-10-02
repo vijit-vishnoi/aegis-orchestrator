@@ -1,11 +1,9 @@
-import sqlite3
 import os
+from langchain_core.messages import HumanMessage, AIMessage, ToolMessage
 from typing import Literal, TypedDict, Annotated
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import add_messages
 from langgraph.types import interrupt, Command
-from langgraph.checkpoint.sqlite import SqliteSaver
-from langchain_core.messages import HumanMessage
 from langchain_core.runnables import RunnableConfig
 from slack_sdk import WebClient
 
@@ -56,7 +54,6 @@ def dispatch_approval(state: AgentState, config: RunnableConfig) -> Command[Lite
     print("--- DISPATCH APPROVAL NODE ---")
     proposed_action = "Restart container 'target_app'"
     
-                                                                  
     slack_token = os.environ.get("SLACK_BOT_TOKEN")
     slack_channel = os.environ.get("SLACK_CHANNEL_ID", "#general")
     thread_id = config.get("configurable", {}).get("thread_id", "unknown-thread")
@@ -145,8 +142,15 @@ def build_graph() -> StateGraph:
     return builder
 
 def get_graph():
-    conn = sqlite3.connect("aegis_checkpoints.sqlite", check_same_thread=False)
-    checkpointer = SqliteSaver(conn)
+    from langgraph.checkpoint.postgres import PostgresSaver
+    from psycopg_pool import ConnectionPool
+    import os
+    
+    db_uri = os.environ.get("DB_URI", "postgresql://postgres:postgrespassword@localhost:5432/aegis")
+    pool = ConnectionPool(db_uri)
+    checkpointer = PostgresSaver(pool)
+    checkpointer.setup()
+    
     builder = build_graph()
     graph = builder.compile(checkpointer=checkpointer)
     return graph

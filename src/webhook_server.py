@@ -1,5 +1,8 @@
 import sys
 import asyncio
+from dotenv import load_dotenv
+
+load_dotenv()
 
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
@@ -28,16 +31,13 @@ async def process_alert(alert_data: dict):
     msg = HumanMessage(content=f"Alert {alertname} fired for {target}. Please remediate.")
     initial_state = {"messages": [msg]}
     
-    print(f"[Webhook] PRE-INVOKE: Triggering workflow for thread: {thread_id}")
     try:
         await asyncio.to_thread(graph.invoke, initial_state, config)
-        print(f"[Webhook] POST-INVOKE: Workflow for {thread_id} completed or paused.")
     except Exception as e:
         print(f"[Webhook] ERROR: Workflow for {thread_id} crashed with: {e}")
 
 @app.post("/webhook")
 async def webhook(request: Request):
-    print(f"[Webhook] Received POST request on /webhook!")
     payload = await request.json()
     
     # Prometheus Alertmanager standard JSON payload has an 'alerts' array

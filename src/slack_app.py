@@ -9,14 +9,11 @@ from dotenv import load_dotenv
 load_dotenv()
 from slack_bolt.async_app import AsyncApp
 from slack_bolt.adapter.socket_mode.async_handler import AsyncSocketModeHandler
-from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from langgraph.types import Command
-from main import build_graph
-
-                                        
+from langchain_core.messages import HumanMessage, AIMessage, ToolMessage
+from main import get_graph
 app = AsyncApp(token=os.environ.get("SLACK_BOT_TOKEN"))
 
-                                                                 
 DB_URI = os.environ.get("DB_URI", "postgresql://postgres:postgrespassword@localhost:5432/aegis")
 
 async def send_remediation_approval_message(channel_id: str, thread_id: str, proposed_action: str):
@@ -55,16 +52,13 @@ async def send_remediation_approval_message(channel_id: str, thread_id: str, pro
 
 @app.action("approve_remediation")
 async def handle_approve_remediation(ack, body, client):
-                                              
     await ack()
     
     try:
-                                                     
         thread_id = body["actions"][0]["value"]
         channel_id = body["channel"]["id"]
         message_ts = body["message"]["ts"]
         
-                                                                        
         await client.chat_update(
             channel=channel_id,
             ts=message_ts,
@@ -78,23 +72,45 @@ async def handle_approve_remediation(ack, body, client):
         )
         
         print(f"[SlackApp] Resuming LangGraph thread: {thread_id}")
-        builder = build_graph()
+        graph = get_graph()
         thread_config = {"configurable": {"thread_id": thread_id}}
+        resume_command = Command(resume={"action": "approve"})
         
-                                          
-        async with AsyncPostgresSaver.from_conn_string(DB_URI) as checkpointer:
-            await checkpointer.setup()
-            graph = builder.compile(checkpointer=checkpointer)
-            
-            resume_command = Command(resume={"action": "approve"})
-            
-            async for event in graph.astream(resume_command, config=thread_config):
-                print(f"[SlackApp] Graph Event: {event}")
+        await asyncio.to_thread(graph.invoke, resume_command, thread_config)
+    except Exception as e:
+        print(f"[SlackApp] Error during graph resumption: {e}")
+
+@app.action("reject_remediation")
+async def handle_reject_remediation(ack, body, client):
+    await ack()
+    
+    try:
+        thread_id = body["actions"][0]["value"]
+        channel_id = body["channel"]["id"]
+        message_ts = body["message"]["ts"]
+        
+        await client.chat_update(
+            channel=channel_id,
+            ts=message_ts,
+            text="Remediation rejected by user. Aborting.",
+            blocks=[
+                {
+                    "type": "section",
+                    "text": {"type": "mrkdwn", "text": f"*Aegis Orchestrator Alert ({thread_id})*\n:x: *Remediation rejected by user. Aborting.*"}
+                }
+            ]
+        )
+        
+        print(f"[SlackApp] Resuming LangGraph thread: {thread_id} (Rejected)")
+        graph = get_graph()
+        thread_config = {"configurable": {"thread_id": thread_id}}
+        resume_command = Command(resume={"action": "reject"})
+        
+        await asyncio.to_thread(graph.invoke, resume_command, thread_config)
     except Exception as e:
         print(f"[SlackApp] Error during graph resumption: {e}")
 
 async def main():
-                                              
     handler = AsyncSocketModeHandler(app, os.environ.get("SLACK_APP_TOKEN"))
     print("[SlackApp] Starting Slack Socket Mode listener...")
     await handler.start_async()
