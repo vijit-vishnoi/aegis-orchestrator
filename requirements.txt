@@ -5,6 +5,7 @@ psycopg_pool
 psycopg[binary]
 langchain-core
 langchain-ollama
+langchain-google-genai
 fastmcp
 slack_bolt
 qdrant-client

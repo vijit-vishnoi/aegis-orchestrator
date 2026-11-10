@@ -12,14 +12,31 @@ logger = logging.getLogger(__name__)
 
 app = App(token=os.environ.get("SLACK_BOT_TOKEN"))
 
-def send_approval_message(channel_id: str, thread_id: str, question: str):
+def send_approval_message(
+    channel_id: str,
+    thread_id: str,
+    alert_summary: str = "High CPU on target_app",
+    diagnosis: str = "Logs show abnormal behavior.",
+    proposed_action: str = "Restart container 'target_app'"
+):
+    if len(diagnosis) > 2500:
+        diagnosis = diagnosis[:2500] + "..."
+
     app.client.chat_postMessage(
         channel=channel_id,
-        text="Remediation Approval Required",
+        text=f"Remediation Approval Required: {proposed_action}",
         blocks=[
             {
                 "type": "section",
-                "text": {"type": "mrkdwn", "text": f"*Aegis Orchestrator Alert ({thread_id})*\n{question}"}
+                "text": {
+                    "type": "mrkdwn",
+                    "text": (
+                        f"*Aegis Orchestrator Alert ({thread_id})*\n"
+                        f"*Alert:* {alert_summary}\n"
+                        f"*AI Diagnosis:* {diagnosis}\n"
+                        f"*Proposed Fix:* {proposed_action}"
+                    )
+                }
             },
             {
                 "type": "actions",

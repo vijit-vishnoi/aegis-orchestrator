@@ -18,7 +18,9 @@ async def process_alert(alert_data: dict):
     # Log the incoming alert
     target = alert_data.get("labels", {}).get("instance", "unknown")
     alertname = alert_data.get("labels", {}).get("alertname", "Unknown Alert")
-    print(f"[Webhook] Processing alert: {alertname} on {target}")
+    container = alert_data.get("labels", {}).get("container") or (target.split(":")[0] if target != "unknown" else "target_app")
+    description = alert_data.get("annotations", {}).get("description") or alert_data.get("annotations", {}).get("summary", "")
+    print(f"[Webhook] Processing alert: {alertname} on {target} (container: {container})")
 
     # Generate a unique thread ID for this incident
     thread_id = f"incident-{uuid.uuid4()}"
@@ -27,9 +29,20 @@ async def process_alert(alert_data: dict):
     # Get the graph with persistent SqliteSaver
     graph = get_graph()
 
-    # Trigger workflow with initial message based on alert
-    msg = HumanMessage(content=f"Alert {alertname} fired for {target}. Please remediate.")
-    initial_state = {"messages": [msg]}
+    # Trigger workflow with initial message containing alert details
+    alert_summary = f"{alertname} on {container}"
+    msg = HumanMessage(
+        content=(
+            f"Alertmanager Alert: '{alertname}' fired for container '{container}' (target: {target}). "
+            f"Annotations: {description}. "
+            "Please use the diagnostic tools to investigate logs and stats, find the root cause, and formulate a diagnosis with a proposed remediation."
+        )
+    )
+    initial_state = {
+        "messages": [msg],
+        "alert_summary": alert_summary,
+        "target_container": container
+    }
     
     try:
         await asyncio.to_thread(graph.invoke, initial_state, config)

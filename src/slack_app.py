@@ -16,17 +16,34 @@ app = AsyncApp(token=os.environ.get("SLACK_BOT_TOKEN"))
 
 DB_URI = os.environ.get("DB_URI", "postgresql://postgres:postgrespassword@localhost:5432/aegis")
 
-async def send_remediation_approval_message(channel_id: str, thread_id: str, proposed_action: str):
+async def send_remediation_approval_message(
+    channel_id: str,
+    thread_id: str,
+    proposed_action: str = "Restart container 'target_app'",
+    alert_summary: str = "Alert detected on target_app",
+    diagnosis: str = "Logs and resource metrics indicate container instability."
+):
     """
-    Helper function called by the LangGraph remediation node to send the interactive Block Kit message.
+    Helper function called to send the interactive Block Kit message including AI diagnosis.
     """
+    if len(diagnosis) > 2500:
+        diagnosis = diagnosis[:2500] + "..."
+
     await app.client.chat_postMessage(
         channel=channel_id,
-        text="Remediation Approval Required",
+        text=f"Remediation Approval Required: {proposed_action}",
         blocks=[
             {
                 "type": "section",
-                "text": {"type": "mrkdwn", "text": f"*Aegis Orchestrator Alert ({thread_id})*\nDo you approve the following action:\n_{proposed_action}_"}
+                "text": {
+                    "type": "mrkdwn",
+                    "text": (
+                        f"*Aegis Orchestrator Alert ({thread_id})*\n"
+                        f"*Alert:* {alert_summary}\n"
+                        f"*AI Diagnosis:* {diagnosis}\n"
+                        f"*Proposed Fix:* {proposed_action}"
+                    )
+                }
             },
             {
                 "type": "actions",
