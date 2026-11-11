@@ -10,7 +10,6 @@ from mcp import ClientSession
 from mcp.client.stdio import stdio_client, StdioServerParameters
 
 async def call_mcp_tool(tool_name: str, arguments: dict, timeout_seconds: int = 15) -> str:
-    # First attempt: Direct in-process invocation of the FastMCP tool for high speed and reliability
     try:
         current_dir = os.path.dirname(os.path.abspath(__file__))
         if current_dir not in sys.path:

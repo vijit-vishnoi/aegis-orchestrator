@@ -28,7 +28,8 @@ def fetch_container_logs(container_name: str, tail: int = 50) -> str:
             capture_output=True,
             text=True,
             check=True,
-            timeout=5
+            timeout=5,
+            encoding="utf-8"
         )
         logs = (result.stdout or result.stderr or "").strip()
         if not logs:

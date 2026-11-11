@@ -15,21 +15,17 @@ from main import get_graph
 app = FastAPI()
 
 async def process_alert(alert_data: dict):
-    # Log the incoming alert
     target = alert_data.get("labels", {}).get("instance", "unknown")
     alertname = alert_data.get("labels", {}).get("alertname", "Unknown Alert")
     container = alert_data.get("labels", {}).get("container") or (target.split(":")[0] if target != "unknown" else "target_app")
     description = alert_data.get("annotations", {}).get("description") or alert_data.get("annotations", {}).get("summary", "")
     print(f"[Webhook] Processing alert: {alertname} on {target} (container: {container})")
 
-    # Generate a unique thread ID for this incident
     thread_id = f"incident-{uuid.uuid4()}"
     config = {"configurable": {"thread_id": thread_id}}
 
-    # Get the graph with persistent SqliteSaver
     graph = get_graph()
 
-    # Trigger workflow with initial message containing alert details
     alert_summary = f"{alertname} on {container}"
     msg = HumanMessage(
         content=(
@@ -52,13 +48,10 @@ async def process_alert(alert_data: dict):
 @app.post("/webhook")
 async def webhook(request: Request):
     payload = await request.json()
-    
-    # Prometheus Alertmanager standard JSON payload has an 'alerts' array
     alerts = payload.get("alerts", [])
     
     for alert in alerts:
         if alert.get("status") == "firing":
-            # Crucial: Run graph invocation as background task to return 200 OK immediately
             asyncio.create_task(process_alert(alert))
             
     return {"status": "ok"}

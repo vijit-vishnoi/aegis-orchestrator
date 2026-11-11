@@ -43,7 +43,15 @@ DIAGNOSIS: <Root cause explanation based on the diagnostic logs and stats>
 PROPOSED_FIX: Restart container '<container_name>'
 """
 
-def parse_llm_diagnosis(content: str, state: AgentState) -> tuple[str, str, str, str]:
+def parse_llm_diagnosis(content: str | list, state: AgentState) -> tuple[str, str, str, str]:
+    if isinstance(content, list):
+        content = "".join(
+            part["text"] if isinstance(part, dict) and "text" in part
+            else part if isinstance(part, str)
+            else getattr(part, "text", str(part))
+            for part in content
+        ).strip()
+
     target_container = state.get("target_container") or "target_app"
     alert_summary = state.get("alert_summary") or "Alert detected on infrastructure"
     
@@ -60,7 +68,6 @@ def parse_llm_diagnosis(content: str, state: AgentState) -> tuple[str, str, str,
             val = line_clean.split(":", 1)[1].strip()
             if val:
                 proposed_action = val
-                # Extract container name from proposed action if present
                 match = re.search(r"['\"]([a-zA-Z0-9_\-]+)['\"]", val)
                 if match:
                     target_container = match.group(1)
@@ -80,7 +87,7 @@ def get_diagnostic_llm():
         return None
 
     try:
-        return ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0)
+        return ChatGoogleGenerativeAI(model="gemini-3.5-flash-lite")
     except Exception as e:
         print(f"[Supervisor] WARNING: Failed to instantiate ChatGoogleGenerativeAI: {e}. Falling back to diagnostic tools.")
         return None
@@ -95,7 +102,6 @@ def supervisor_node(state: AgentState) -> Command[Literal["diagnostic_tools", "d
             goto="__end__"
         )
 
-    # Determine target container if not already in state
     target_container = state.get("target_container")
     if not target_container:
         messages = state["messages"]
@@ -116,7 +122,6 @@ def supervisor_node(state: AgentState) -> Command[Literal["diagnostic_tools", "d
             conversation = [SystemMessage(content=SUPERVISOR_SYSTEM_PROMPT)] + list(state["messages"])
             response = llm_with_tools.invoke(conversation)
             
-            # If the model requested diagnostic tool execution
             if getattr(response, "tool_calls", None):
                 print(f"[Supervisor] LLM requested {len(response.tool_calls)} tool calls: {[tc['name'] for tc in response.tool_calls]}")
                 return Command(
@@ -129,8 +134,18 @@ def supervisor_node(state: AgentState) -> Command[Literal["diagnostic_tools", "d
                     goto="diagnostic_tools"
                 )
             
-            # If the model produced its diagnosis
-            content = response.content if isinstance(response.content, str) else str(response.content)
+            if isinstance(response.content, list):
+                content = "".join(
+                    part["text"] if isinstance(part, dict) and "text" in part
+                    else part if isinstance(part, str)
+                    else getattr(part, "text", str(part))
+                    for part in response.content
+                ).strip()
+            elif isinstance(response.content, str):
+                content = response.content.strip()
+            else:
+                content = str(response.content).strip()
+
             diagnosis, proposed_action, parsed_alert, parsed_container = parse_llm_diagnosis(content, state)
             
             print(f"[Supervisor] Diagnosis formulated: {diagnosis}")
@@ -150,7 +165,6 @@ def supervisor_node(state: AgentState) -> Command[Literal["diagnostic_tools", "d
         except Exception as e:
             print(f"[Supervisor] LLM invocation encountered an issue ({e}). Proceeding with diagnostic tool inspection fallback.")
 
-    # Fallback diagnostic investigation (e.g. when LLM daemon is offline)
     print(f"[Supervisor] Executing direct diagnostic inspection on container '{target_container}'...")
     logs = fetch_container_logs.invoke({"container_name": target_container, "tail": 50})
     stats = get_container_stats.invoke({"container_name": target_container})

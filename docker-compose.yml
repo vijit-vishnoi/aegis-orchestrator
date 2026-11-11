@@ -45,6 +45,7 @@ services:
 
   target_app:
     image: python:3.11-slim
+    container_name: target_app
     working_dir: /app
     volumes:
       - ./target_app:/app
